@@ -36,6 +36,15 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Hunty needs your location to show nearby clue zones on the map.",
+          "locationWhenInUsePermission": "Hunty needs your location to show nearby clue zones on the map."
+        }
+      ]
+    ]
       "expo-router"
     ],
     "extra": {

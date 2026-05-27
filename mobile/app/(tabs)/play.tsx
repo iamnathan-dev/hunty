@@ -1,3 +1,8 @@
+import GameMapScreen from '@components/GameMapScreen';
+
+export default function PlayScreen() {
+  return <GameMapScreen />;
+}
 /**
  * Play screen — mobile clue list with Reanimated unlock animation.
  *
