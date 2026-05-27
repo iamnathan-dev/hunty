@@ -1,131 +1,92 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, View, Text, Button } from 'react-native';
-import { Link, useSearchParams, useRouter } from 'expo-router';
+import { useState, useEffect } from 'react';
+import { StyleSheet, FlatList, View, Text, Pressable } from 'react-native';
+import { useRouter, useSearchParams } from 'expo-router';
 import { getHuntById, getHuntClues } from '@store/huntStore';
-import { usePlayerStore } from '@store/useStore';
-import type { Clue, StoredHunt } from '@lib/types';
+import type { StoredHunt, Clue } from '@lib/types';
 
 export default function DetailsScreen() {
-  const params = useSearchParams();
   const router = useRouter();
-  const huntId = Number(params.huntId);
-  const [hunt, setHunt] = useState<StoredHunt | undefined>(undefined);
+  const { huntId } = useSearchParams();
+  const [hunt, setHunt] = useState<StoredHunt | null>(null);
   const [clues, setClues] = useState<Clue[]>([]);
-  const [loading, setLoading] = useState(true);
-  const progress = usePlayerStore((state) => state.currentProgress);
-  const setProgress = usePlayerStore((state) => state.setProgress);
 
   useEffect(() => {
-    let isMounted = true;
-
-    async function loadHunt() {
-      setLoading(true);
-      const selectedHunt = await getHuntById(huntId);
-      if (!isMounted) return;
-      setHunt(selectedHunt);
-      if (selectedHunt) {
-        const huntClues = await getHuntClues(selectedHunt.id);
-        if (!isMounted) return;
-        setClues(huntClues);
-      }
-      if (isMounted) setLoading(false);
-    }
-
-    loadHunt();
-
-    return () => {
-      isMounted = false;
-    };
+    const id = Number(huntId);
+    Promise.all([getHuntById(id), getHuntClues(id)]).then(([hunt, clues]) => {
+      if (hunt) setHunt(hunt);
+      setClues(clues);
+    });
   }, [huntId]);
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#333" />
-      </View>
-    );
-  }
-
-  if (!hunt) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Hunt Not Found</Text>
-        <Text style={styles.subtitle}>Please go back and select an active hunt.</Text>
-        <Button title="Back to Hunts" onPress={() => router.push('/(tabs)/hunts')} />
-      </View>
-    );
-  }
-
-  const isCurrentHunt = progress?.hunt_id === hunt.id;
-  const currentIndex = isCurrentHunt ? progress.current_clue_index : 0;
-  const completed = isCurrentHunt ? progress.completed : false;
-
-  const handleStart = () => {
-    setProgress({
-      hunt_id: hunt.id,
-      player: 'guest',
-      current_clue_index: 0,
-      completed: false,
-      reward_claimed: false,
-    });
-    router.push(`/nested?huntId=${hunt.id}&clueIndex=0`);
-  };
-
-  const handleContinue = () => {
-    router.push(`/nested?huntId=${hunt.id}&clueIndex=${currentIndex}`);
-  };
-
-  const clueRows = clues.map((clue: Clue, index: number) => {
-    const isSolved = completed || index < currentIndex;
-    const isCurrent = !completed && index === currentIndex;
-    const statusLabel = completed
-      ? 'Solved'
-      : isSolved
-      ? 'Solved'
-      : isCurrent
-      ? 'Current'
-      : 'Locked';
-
-    return {
-      ...clue,
-      statusLabel,
-      displayLabel: `#${index + 1} ${clue.question}`,
-      solved: isSolved,
-    };
-  });
+  if (!hunt) return <View style={styles.container} />;
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{hunt.title}</Text>
       <Text style={styles.subtitle}>{hunt.description}</Text>
-      <Text style={styles.meta}>Total clues: {clues.length}</Text>
-      {completed ? (
-        <Text style={styles.completeText}>This hunt is complete. Great work!</Text>
-      ) : (
-        <Button
-          title={isCurrentHunt ? `Continue clue ${currentIndex + 1}` : 'Start hunt'}
-          onPress={isCurrentHunt ? handleContinue : handleStart}
-        />
-      )}
-      <Text style={styles.sectionHeader}>Ordered clue list</Text>
+      <Text style={styles.clueCount}>Clues: {clues.length}</Text>
       <FlatList
-        data={clueRows}
+        scrollEnabled={false}
+        data={clues}
         keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item }) => (
-          <View style={[styles.clueCard, item.solved && styles.solvedCard]}>
-            <Text style={styles.clueLabel}>{item.displayLabel}</Text>
-            <Text style={styles.clueStatus}>{item.statusLabel}</Text>
-          </View>
+        renderItem={({ item, index }) => (
+          <Pressable
+            onPress={() => router.push(`/nested?huntId=${hunt.id}&clueIndex=${index}`)}
+            style={styles.clueItem}
+          >
+            <Text style={styles.clueNum}>#{index + 1}</Text>
+            <Text style={styles.clueQuestion}>{item.question}</Text>
+          </Pressable>
         )}
       />
-      <View style={styles.linkRow}>
-        <Link href="/(tabs)/hunts" asChild>
-          <Button title="Back to Hunts" />
-        </Link>
-      </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 16,
+    backgroundColor: '#fff',
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 12,
+  },
+  clueCount: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 16,
+  },
+  clueItem: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    backgroundColor: '#f5f5f5',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  clueNum: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginRight: 12,
+    minWidth: 30,
+  },
+  clueQuestion: {
+    fontSize: 14,
+    color: '#333',
+    flex: 1,
+  },
+});
 
 const styles = StyleSheet.create({
   container: {

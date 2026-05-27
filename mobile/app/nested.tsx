@@ -1,129 +1,109 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, View, Text, StyleSheet, Button, TextInput } from 'react-native';
+import { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, TextInput, Pressable, Alert } from 'react-native';
 import { useRouter, useSearchParams } from 'expo-router';
 import { getHuntById, getHuntClues } from '@store/huntStore';
-import { usePlayerStore } from '@store/useStore';
-import type { Clue, StoredHunt } from '@lib/types';
+import type { StoredHunt, Clue } from '@lib/types';
 
 export default function NestedScreen() {
-  const params = useSearchParams();
   const router = useRouter();
-  const huntId = Number(params.huntId);
-  const clueIndex = Number(params.clueIndex);
-  const [hunt, setHunt] = useState<StoredHunt | undefined>(undefined);
+  const { huntId, clueIndex } = useSearchParams();
+  const [hunt, setHunt] = useState<StoredHunt | null>(null);
   const [clues, setClues] = useState<Clue[]>([]);
-  const [loading, setLoading] = useState(true);
-  const progress = usePlayerStore((state) => state.currentProgress);
-  const setProgress = usePlayerStore((state) => state.setProgress);
-  const updateClueIndex = usePlayerStore((state) => state.updateClueIndex);
-  const markCompleted = usePlayerStore((state) => state.markCompleted);
-
   const [answer, setAnswer] = useState('');
-  const [feedback, setFeedback] = useState('');
+
+  const hId = Number(huntId);
+  const idx = Number(clueIndex);
+  const clue = clues[idx];
+  const isLast = idx === clues.length - 1;
 
   useEffect(() => {
-    let isMounted = true;
-
-    async function loadClueData() {
-      setLoading(true);
-      const selectedHunt = await getHuntById(huntId);
-      if (!isMounted) return;
-      setHunt(selectedHunt);
-      if (selectedHunt) {
-        const huntClues = await getHuntClues(selectedHunt.id);
-        if (!isMounted) return;
-        setClues(huntClues);
-      }
-      if (isMounted) setLoading(false);
-    }
-
-    loadClueData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [huntId]);
-
-  useEffect(() => {
-    if (!hunt || !clues.length) return;
-    if (!progress || progress.hunt_id !== hunt.id) {
-      setProgress({
-        hunt_id: hunt.id,
-        player: 'guest',
-        current_clue_index: clueIndex,
-        completed: false,
-        reward_claimed: false,
-      });
-      return;
-    }
-
-    if (progress.current_clue_index !== clueIndex && !progress.completed) {
-      updateClueIndex(clueIndex);
-    }
-  }, [clueIndex, clues.length, hunt, progress, setProgress, updateClueIndex]);
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#333" />
-      </View>
-    );
-  }
-
-  const clue = clues[clueIndex];
-
-  if (!hunt || !clue) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Clue not found</Text>
-        <Text style={styles.subtitle}>Open the hunt details and select a valid clue.</Text>
-        <Button title="Back to Hunt" onPress={() => router.push('/(tabs)/hunts')} />
-      </View>
-    );
-  }
-
-  const isLastClue = clueIndex === clues.length - 1;
+    Promise.all([getHuntById(hId), getHuntClues(hId)]).then(([hunt, clues]) => {
+      if (hunt) setHunt(hunt);
+      setClues(clues);
+    });
+  }, [hId]);
 
   const handleSubmit = () => {
-    if (answer.trim().toLowerCase() !== clue.answer.trim().toLowerCase()) {
-      setFeedback('Incorrect answer. Try again.');
+    if (!clue) return;
+    const correct = answer.trim().toLowerCase() === clue.answer.trim().toLowerCase();
+    if (!correct) {
+      Alert.alert('Incorrect', 'Try again');
       return;
     }
-
-    setFeedback('Correct!');
-    const nextIndex = clueIndex + 1;
-
-    if (isLastClue) {
-      markCompleted();
-      router.push(`/details?huntId=${hunt.id}`);
-      return;
+    if (isLast) {
+      Alert.alert('Complete!', 'You finished the hunt!');
+      router.replace(`/details?huntId=${hId}`);
+    } else {
+      router.replace(`/nested?huntId=${hId}&clueIndex=${idx + 1}`);
     }
-
-    updateClueIndex(nextIndex);
-    router.replace(`/nested?huntId=${hunt.id}&clueIndex=${nextIndex}`);
   };
+
+  if (!clue) return <View style={styles.container} />;
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Clue {clueIndex + 1}</Text>
-      <Text style={styles.subtitle}>{clue.question}</Text>
+      <Text style={styles.header}>Clue {idx + 1} of {clues.length}</Text>
+      <Text style={styles.question}>{clue.question}</Text>
       <TextInput
         style={styles.input}
+        placeholder="Your answer"
         value={answer}
         onChangeText={setAnswer}
-        placeholder="Enter your answer"
         autoCapitalize="none"
         autoCorrect={false}
-        accessibilityLabel="Answer input"
       />
-      {!!feedback && <Text style={styles.feedback}>{feedback}</Text>}
-      <Button title={isLastClue ? 'Submit and Complete Hunt' : 'Submit Answer'} onPress={handleSubmit} />
-      <View style={styles.linkRow}>
-        <Button title="Back to Hunt" onPress={() => router.push(`/details?huntId=${hunt.id}`)} />
-      </View>
+      <Pressable style={styles.button} onPress={handleSubmit}>
+        <Text style={styles.buttonText}>{isLast ? 'Finish' : 'Next'}</Text>
+      </Pressable>
+      <Pressable
+        style={[styles.button, styles.backButton]}
+        onPress={() => router.back()}
+      >
+        <Text style={styles.buttonText}>Back</Text>
+      </Pressable>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 16,
+    backgroundColor: '#fff',
+  },
+  header: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 12,
+  },
+  question: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 20,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  button: {
+    backgroundColor: '#333',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  backButton: {
+    backgroundColor: '#999',
+  },
+  buttonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
