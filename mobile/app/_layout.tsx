@@ -5,13 +5,17 @@ import { BackHandler, StyleSheet, View } from 'react-native';
 import { Stack, type ErrorBoundaryProps, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
-import { hideSplashScreen } from '@utils/splashScreenManager';
-import { useTheme } from '@providers/ThemeProvider';
+import { hideSplashScreen, initializeSplashScreen } from '@utils/splashScreenManager';
+import { ThemeProvider, useTheme } from '@providers/ThemeProvider';
+import ReactQueryProvider from '@providers/ReactQueryProvider';
 import { ThemedCustomText, ThemedButton } from '@components/themed';
 import { useBackHandler } from '../hooks/useBackHandler';
 import { MemoryDiagnosticsOverlay } from '../components/MemoryDiagnosticsOverlay';
 import { StackHeader } from '@components/navigation/StackHeader';
-import { Sentry } from '@config/sentry';
+import { Sentry, initializeSentry } from '@config/sentry';
+
+initializeSplashScreen();
+initializeSentry();
 
 export const unstable_settings = {
   initialRouteName: '(tabs)',
@@ -23,6 +27,19 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   }, [error]);
 
   return (
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'right', 'bottom', 'left']}>
+        <View style={styles.errorContainer}>
+          <ThemedCustomText variant="h2" style={styles.errorTitle}>
+            Something went wrong
+          </ThemedCustomText>
+          <ThemedCustomText variant="body" style={styles.errorMessage}>
+            {error.message || 'Unexpected navigation error.'}
+          </ThemedCustomText>
+          <ThemedButton text="Try again" onPress={retry} variant="primary" size="md" />
+        </View>
+      </SafeAreaView>
+    </SafeAreaProvider>
     <SafeAreaView style={styles.safeArea} edges={['top', 'right', 'bottom', 'left']}>
       <View style={styles.errorContainer}>
         <ThemedCustomText variant="h2" style={styles.errorTitle}>
@@ -43,17 +60,36 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
 }
 
 export default function RootLayout() {
+  return (
+    <ReactQueryProvider>
+      <ThemeProvider>
+        <RootLayoutNav />
+      </ThemeProvider>
+    </ReactQueryProvider>
+  );
+}
+
+function RootLayoutNav() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
-
   const [loaded, error] = useFonts();
 
   useEffect(() => {
-    if (loaded || error) {
-      hideSplashScreen();
-    }
+    if (loaded || error) hideSplashScreen();
   }, [loaded, error]);
 
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (router.canGoBack()) {
+        router.back();
+        return true;
+      }
+      return false;
+    });
+    return () => backHandler.remove();
+  }, [router]);
+
+  if (!loaded && !error) return null;
   const backAction = useCallback(() => {
     if (router.canGoBack()) {
       router.back();
@@ -90,8 +126,8 @@ export default function RootLayout() {
       />
     </SafeAreaView>
     <SafeAreaProvider>
-      <SafeAreaView 
-        style={[styles.safeArea, { backgroundColor: colors.background }]} 
+      <SafeAreaView
+        style={[styles.safeArea, { backgroundColor: colors.background }]}
         edges={['top', 'right', 'bottom', 'left']}
       >
         <Stack
@@ -105,6 +141,7 @@ export default function RootLayout() {
         <MemoryDiagnosticsOverlay />
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="hunt/[id]" options={{ title: 'Hunt Details' }} />
           <Stack.Screen name="details" options={{ title: 'Details' }} />
           <Stack.Screen name="nested" options={{ title: 'Nested' }} />
         </Stack>
@@ -114,9 +151,7 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
+  safeArea: { flex: 1 },
   errorContainer: {
     flex: 1,
     alignItems: 'center',
@@ -124,10 +159,6 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingHorizontal: 24,
   },
-  errorTitle: {
-    textAlign: 'center',
-  },
-  errorMessage: {
-    textAlign: 'center',
-  },
+  errorTitle: { textAlign: 'center' },
+  errorMessage: { textAlign: 'center' },
 });

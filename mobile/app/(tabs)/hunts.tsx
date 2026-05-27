@@ -1,3 +1,6 @@
+import { StyleSheet } from 'react-native';
+import { ThemedView } from '@components/themed';
+import { HuntsList } from '@components/HuntsList';
 import React, { useState } from 'react';
 import { StyleSheet, View, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { ThemedView, ThemedCustomText, ThemedButton } from '@components/themed';
@@ -86,6 +89,9 @@ export default function HuntsScreen() {
   };
 
   return (
+    <ThemedView style={styles.container}>
+      <HuntsList />
+    </ThemedView>
     <ScrollView 
       style={[styles.scrollView, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.contentContainer}
@@ -250,6 +256,7 @@ export default function HuntsScreen() {
 }
 
 const styles = StyleSheet.create({
+  container: { flex: 1 },
   scrollView: {
     flex: 1,
   },
